@@ -58,6 +58,8 @@ public class ClavierService extends InputMethodService {
             T_UP = 6, T_DOWN = 7, T_HOME = 8, T_END = 9, T_SHIFT = 10, T_SYM = 11, T_LANG = 12, T_ENTER = 13;
 
     private static final int LANG_FR = 0, LANG_AR = 1;
+    // Lettres françaises : minuscules plus grandes (elles paraissent petites), majuscules un peu moins
+    private static final float LETTER_FR_LOWER = 25, LETTER_FR_UPPER = 22;
     private static final int S_NORMAL = 0, S_FN = 1, S_NAV = 2, S_ACCENT = 3;
 
     // ---------- Couleurs (thème sombre proche de Gboard) ----------
@@ -331,24 +333,24 @@ public class ClavierService extends InputMethodService {
         Key del = icon(T_DEL, R.drawable.ic_backspace, 1f, S_NAV);
         del.mirror = true;
         nav.add(del);
-        nav.add(fn(T_LEFT, "←", 1f, S_NAV, 20));
-        nav.add(fn(T_RIGHT, "→", 1f, S_NAV, 20));
-        nav.add(fn(T_UP, "↑", 1f, S_NAV, 20));
-        nav.add(fn(T_DOWN, "↓", 1f, S_NAV, 20));
-        nav.add(fn(T_HOME, "|←", 1f, S_NAV, 16));
-        nav.add(fn(T_END, "→|", 1f, S_NAV, 16));
+        nav.add(fn(T_LEFT, "←", 1f, S_NAV, 23));
+        nav.add(fn(T_RIGHT, "→", 1f, S_NAV, 23));
+        nav.add(fn(T_UP, "↑", 1f, S_NAV, 23));
+        nav.add(fn(T_DOWN, "↓", 1f, S_NAV, 23));
+        nav.add(fn(T_HOME, "|←", 1f, S_NAV, 18));
+        nav.add(fn(T_END, "→|", 1f, S_NAV, 18));
         addRow(nav, 34);
 
         // 2) Rangée des chiffres
         List<Key> nums = new ArrayList<>();
-        for (String d : NUMS) nums.add(ch(d, null, false, 18));
+        for (String d : NUMS) nums.add(ch(d, null, false, 21));
         addRow(nums, 40);
 
         // 3) Lettres ou symboles
         if (symbols) {
             for (int r = 0; r < 3; r++) {
                 List<Key> row = new ArrayList<>();
-                for (String s : SYM_ROWS[r]) row.add(ch(s, null, false, 20));
+                for (String s : SYM_ROWS[r]) row.add(ch(s, null, false, 23));
                 if (r == 2) row.add(icon(T_BKSP, R.drawable.ic_backspace, 1.5f, S_FN));
                 addRow(row, 40);
             }
@@ -362,7 +364,7 @@ public class ClavierService extends InputMethodService {
                 }
                 for (int i = 0; i < rows[r].length; i++) {
                     String sh = (lang == LANG_AR) ? AR_SHIFT_ROWS[r][i] : null;
-                    row.add(ch(rows[r][i], sh, true, 20));
+                    row.add(ch(rows[r][i], sh, true, lang == LANG_FR ? LETTER_FR_LOWER : 23));
                 }
                 if (r == 2) row.add(icon(T_BKSP, R.drawable.ic_backspace, 1.4f, S_FN));
                 addRow(row, 40);
@@ -373,19 +375,19 @@ public class ClavierService extends InputMethodService {
         List<Key> bottom = new ArrayList<>();
         bottom.add(fn(T_SYM,
                 symbols ? (lang == LANG_FR ? "ABC" : "أبج") : "?123",
-                1.4f, S_FN, 14));
-        bottom.add(fn(T_LANG, lang == LANG_FR ? "ع" : "FR", 1.1f, S_FN, 17));
-        bottom.add(ch(lang == LANG_FR ? "," : "،", null, false, 20));
+                1.4f, S_FN, 16));
+        bottom.add(fn(T_LANG, lang == LANG_FR ? "ع" : "FR", 1.1f, S_FN, 19));
+        bottom.add(ch(lang == LANG_FR ? "," : "،", null, false, 25));
         Key space = fn(T_SPACE,
                 lang == LANG_FR ? "Français" : "العربية",
-                4.0f, S_NORMAL, 13);
+                4.0f, S_NORMAL, 14);
         space.dim = true;
         bottom.add(space);
-        bottom.add(ch(".", null, false, 20));
+        bottom.add(ch(".", null, false, 25));
         String el = enterLabel();
         bottom.add(el == null
                 ? icon(T_ENTER, R.drawable.ic_enter, 1.5f, S_ACCENT)
-                : fn(T_ENTER, el, 1.5f, S_ACCENT, 18));
+                : fn(T_ENTER, el, 1.5f, S_ACCENT, 20));
         addRow(bottom, 40);
 
         refreshLabels();
@@ -476,7 +478,12 @@ public class ClavierService extends InputMethodService {
 
     private void refreshLabels() {
         for (Key k : keys) {
-            if (k.isLetter && k.tv != null) k.tv.setText(k.label());
+            if (k.isLetter && k.tv != null) {
+                k.tv.setText(k.label());
+                if (lang == LANG_FR) {
+                    k.tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, shift != 0 ? LETTER_FR_UPPER : LETTER_FR_LOWER);
+                }
+            }
         }
         if (shiftKey != null && shiftKey.iv != null) {
             int res = shift == 0 ? R.drawable.ic_shift : (shift == 1 ? R.drawable.ic_shift_on : R.drawable.ic_caps);
@@ -791,7 +798,7 @@ public class ClavierService extends InputMethodService {
             TextView t = new TextView(this);
             t.setText(a);
             t.setTextColor(C_TEXT);
-            t.setTextSize(TypedValue.COMPLEX_UNIT_SP, 22);
+            t.setTextSize(TypedValue.COMPLEX_UNIT_SP, 24);
             t.setGravity(Gravity.CENTER);
             t.setBackground(keyBackground(C_KEY));
             t.setOnClickListener(new View.OnClickListener() {
@@ -846,7 +853,7 @@ public class ClavierService extends InputMethodService {
         toggle.setImageResource(R.drawable.ic_chevron);
         toggle.setImageTintList(ColorStateList.valueOf(C_ACCENT));
         toggle.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        toggle.setPadding(dp(8), dp(8), dp(8), dp(8));
+        toggle.setPadding(dp(5), dp(5), dp(5), dp(5));
         if (toolsOpen) toggle.setScaleX(-1f);
         toggle.setBackground(keyBackground(C_BG));
         toggle.setOnClickListener(new View.OnClickListener() {
@@ -880,7 +887,7 @@ public class ClavierService extends InputMethodService {
             TextView tv = new TextView(this);
             tv.setGravity(Gravity.CENTER);
             tv.setTextColor(C_TEXT);
-            tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 17);
+            tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 19);
             tv.setSingleLine(true);
             tv.setEllipsize(TextUtils.TruncateAt.END);
             tv.setPadding(dp(6), 0, dp(6), 0);
@@ -900,20 +907,21 @@ public class ClavierService extends InputMethodService {
     }
 
     private static final int ACTION_ATTACH = -1;
+    private static final int ACTION_CLEAR_ALL = -2;
 
     /** Outils : copier, coller, couper, tout sélectionner, envoyer un fichier (trombone). */
     private void addToolButtons(LinearLayout bar) {
         final int[] icons = {R.drawable.ic_copy, R.drawable.ic_paste, R.drawable.ic_cut,
-                R.drawable.ic_select_all, R.drawable.ic_attach};
+                R.drawable.ic_select_all, R.drawable.ic_clear_all, R.drawable.ic_attach};
         final int[] actions = {android.R.id.copy, android.R.id.paste, android.R.id.cut,
-                android.R.id.selectAll, ACTION_ATTACH};
+                android.R.id.selectAll, ACTION_CLEAR_ALL, ACTION_ATTACH};
         for (int i = 0; i < icons.length; i++) {
             final int action = actions[i];
             ImageView b = new ImageView(this);
             b.setImageResource(icons[i]);
             b.setImageTintList(ColorStateList.valueOf(C_TEXT));
             b.setScaleType(ImageView.ScaleType.FIT_CENTER);
-            b.setPadding(dp(10), dp(8), dp(10), dp(8));
+            b.setPadding(dp(6), dp(3), dp(6), dp(3));
             b.setBackground(keyBackground(C_BG));
             b.setOnClickListener(new View.OnClickListener() {
                 @Override
@@ -926,12 +934,28 @@ public class ClavierService extends InputMethodService {
                         return;
                     }
                     InputConnection ic = getCurrentInputConnection();
-                    if (ic != null) ic.performContextMenuAction(action);
+                    if (ic != null) {
+                        if (action == ACTION_CLEAR_ALL) {
+                            clearAllText(ic);
+                        } else {
+                            ic.performContextMenuAction(action);
+                        }
+                    }
                     scheduleSuggestions();
                 }
             });
             bar.addView(b, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f));
         }
+    }
+
+    /** Efface tout le texte du champ en cours (avant et après le curseur). */
+    private void clearAllText(InputConnection ic) {
+        ic.beginBatchEdit();
+        ic.performContextMenuAction(android.R.id.selectAll);
+        ic.commitText("", 1);
+        ic.deleteSurroundingText(100000, 100000);
+        ic.endBatchEdit();
+        if (lang == LANG_FR && shift == 0) autoShift();
     }
 
     private void scheduleSuggestions() {
