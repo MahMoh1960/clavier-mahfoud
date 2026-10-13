@@ -914,10 +914,12 @@ public class ClavierService extends InputMethodService {
 
     /** Outils : copier, coller, couper, tout sélectionner, envoyer un fichier (trombone). */
     private void addToolButtons(LinearLayout bar) {
-        final int[] icons = {R.drawable.ic_copy, R.drawable.ic_paste, R.drawable.ic_cut,
-                R.drawable.ic_select_all, R.drawable.ic_clear_all, R.drawable.ic_attach};
-        final int[] actions = {android.R.id.copy, android.R.id.paste, android.R.id.cut,
-                android.R.id.selectAll, ACTION_CLEAR_ALL, ACTION_ATTACH};
+        // De gauche à droite : fichier, effacer, sélectionner, couper, copier, coller.
+        // Lu depuis l'extrême droite : coller, copier, couper, sélectionner, effacer, fichier.
+        final int[] icons = {R.drawable.ic_attach, R.drawable.ic_clear_all, R.drawable.ic_select_all,
+                R.drawable.ic_cut, R.drawable.ic_copy, R.drawable.ic_paste};
+        final int[] actions = {ACTION_ATTACH, ACTION_CLEAR_ALL, android.R.id.selectAll,
+                android.R.id.cut, android.R.id.copy, android.R.id.paste};
         for (int i = 0; i < icons.length; i++) {
             final int action = actions[i];
             ImageView b = new ImageView(this);
