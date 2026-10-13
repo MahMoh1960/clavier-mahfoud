@@ -1,0 +1,40 @@
+CLAVIER FR (AZERTY) / AR — rangée de navigation
+================================================
+
+CONTENU (11 fichiers à plat, sans dossier)
+  ClavierService.java, MainActivity.java, AndroidManifest.xml, method.xml,
+  ic_backspace.xml, ic_shift.xml, ic_shift_on.xml, ic_caps.xml, ic_enter.xml,
+  ic_launcher.xml  -> à envoyer à la racine du dépôt GitHub
+  build.yml        -> à créer dans .github/workflows/ (voir étape 2)
+
+ÉTAPE 1 — Envoyer les 10 premiers fichiers
+  1. Sur GitHub, créez un dépôt (ex. « clavier »).
+  2. Add file > Upload files : sélectionnez les 10 fichiers (.java, .xml)
+     SAUF build.yml, puis « Commit changes ».
+
+ÉTAPE 2 — Ajouter la compilation automatique
+  1. Add file > Create new file.
+  2. Dans le nom, tapez exactement : .github/workflows/build.yml
+     (les « / » créent les dossiers).
+  3. Collez tout le contenu de build.yml, puis « Commit changes ».
+
+ÉTAPE 3 — Récupérer l'APK
+  1. Onglet Actions : attendez la coche verte (3 à 6 minutes).
+  2. Page d'accueil du dépôt > Releases > Clavier-FR-AR.apk > téléchargez.
+  3. Installez l'APK (autorisez les sources inconnues si demandé).
+
+ÉTAPE 4 — Activer le clavier
+  1. Ouvrez l'application « Clavier FR-AR ».
+  2. « 1. Activer le clavier » : activez Clavier FR-AR.
+  3. « 2. Choisir le clavier » : sélectionnez-le.
+
+RANGÉE DU HAUT
+  effacer en arrière | effacer en avant | ← → | ↑ ↓ | début | fin de ligne
+  Maintenir une flèche ou une touche d'effacement = répétition.
+  Maintenir une lettre = accents (é è ê à ù ç…) ; en arabe : أ إ آ ؤ ئ ة ; chiffres arabes sur les chiffres.
+  Touche ع / FR = changer de langue ; ⇧ = majuscules (deux fois = verrouillage ;
+  en arabe, ⇧ donne les signes de vocalisation et les hamzas).
+
+SI LA COMPILATION ÉCHOUE
+  Ouvrez l'onglet Actions > l'exécution en rouge > « Compiler l'APK »,
+  copiez les lignes d'erreur et envoyez-les-moi.
