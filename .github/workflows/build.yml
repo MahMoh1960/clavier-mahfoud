@@ -1,0 +1,31 @@
+              versionCode 1
+                  versionName '1.0'
+              }
+              compileOptions {
+                  sourceCompatibility JavaVersion.VERSION_17
+                  targetCompatibility JavaVersion.VERSION_17
+                  encoding 'UTF-8'
+              }
+          }
+          EOF
+
+      - name: Accepter les licences du SDK Android
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+
+      - name: Compiler l'APK
+        run: gradle -p projet assembleDebug --no-daemon --stacktrace
+
+      - name: Renommer l'APK
+        run: cp projet/app/build/outputs/apk/debug/app-debug.apk Clavier-FR-AR.apk
+
+      - name: Conserver l'APK (onglet Actions)
+        uses: actions/upload-artifact@v4
+        with:
+          name: Clavier-FR-AR
+          path: Clavier-FR-AR.apk
+
+      - name: Publier l'APK (onglet Releases)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ github.run_number }}
+          name: Clavier FR-AR
