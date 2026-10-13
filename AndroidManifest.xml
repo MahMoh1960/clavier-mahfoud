@@ -16,6 +16,13 @@
             </intent-filter>
         </activity>
 
+        <activity
+            android:name=".PickFileActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+
         <service
             android:name=".ClavierService"
             android:exported="true"

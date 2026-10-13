@@ -1,5 +1,6 @@
 package com.mahmoh.clavier;
 
+import android.content.Intent;
 import android.content.res.ColorStateList;
 import android.graphics.Color;
 import android.graphics.Typeface;
@@ -164,6 +165,7 @@ public class ClavierService extends InputMethodService {
     private final TextView[] sugViews = new TextView[3];
     private final String[] sugs = new String[3];
     private boolean suggestOn = true;
+    private boolean toolsOpen = false;
     private volatile Dict dictFr, dictAr;
     private final Map<String, Integer> learnedFr = new HashMap<>();
     private final Map<String, Integer> learnedAr = new HashMap<>();
@@ -278,6 +280,7 @@ public class ClavierService extends InputMethodService {
         if (!restarting) {
             symbols = false;
             shift = 0;
+            toolsOpen = false;
         }
         build();
         autoShift();
@@ -837,6 +840,34 @@ public class ClavierService extends InputMethodService {
         LinearLayout bar = new LinearLayout(this);
         bar.setOrientation(LinearLayout.HORIZONTAL);
         bar.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
+
+        // Bouton à gauche : bascule entre suggestions de mots et outils (copier, coller...)
+        ImageView toggle = new ImageView(this);
+        toggle.setImageResource(R.drawable.ic_chevron);
+        toggle.setImageTintList(ColorStateList.valueOf(C_ACCENT));
+        toggle.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        toggle.setPadding(dp(8), dp(8), dp(8), dp(8));
+        if (toolsOpen) toggle.setScaleX(-1f);
+        toggle.setBackground(keyBackground(C_BG));
+        toggle.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                v.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
+                toolsOpen = !toolsOpen;
+                rebuildLater();
+            }
+        });
+        bar.addView(toggle, new LinearLayout.LayoutParams(dp(40), ViewGroup.LayoutParams.MATCH_PARENT));
+
+        if (toolsOpen) {
+            addToolButtons(bar);
+            root.addView(bar, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(36)));
+            sugViews[0] = null;
+            sugViews[1] = null;
+            sugViews[2] = null;
+            return;
+        }
+
         for (int i = 0; i < 3; i++) {
             if (i > 0) {
                 View div = new View(this);
@@ -866,6 +897,41 @@ public class ClavierService extends InputMethodService {
             sugs[i] = null;
         }
         root.addView(bar, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(36)));
+    }
+
+    private static final int ACTION_ATTACH = -1;
+
+    /** Outils : copier, coller, couper, tout sélectionner, envoyer un fichier (trombone). */
+    private void addToolButtons(LinearLayout bar) {
+        final int[] icons = {R.drawable.ic_copy, R.drawable.ic_paste, R.drawable.ic_cut,
+                R.drawable.ic_select_all, R.drawable.ic_attach};
+        final int[] actions = {android.R.id.copy, android.R.id.paste, android.R.id.cut,
+                android.R.id.selectAll, ACTION_ATTACH};
+        for (int i = 0; i < icons.length; i++) {
+            final int action = actions[i];
+            ImageView b = new ImageView(this);
+            b.setImageResource(icons[i]);
+            b.setImageTintList(ColorStateList.valueOf(C_TEXT));
+            b.setScaleType(ImageView.ScaleType.FIT_CENTER);
+            b.setPadding(dp(10), dp(8), dp(10), dp(8));
+            b.setBackground(keyBackground(C_BG));
+            b.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    v.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
+                    if (action == ACTION_ATTACH) {
+                        Intent i = new Intent(ClavierService.this, PickFileActivity.class);
+                        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                        startActivity(i);
+                        return;
+                    }
+                    InputConnection ic = getCurrentInputConnection();
+                    if (ic != null) ic.performContextMenuAction(action);
+                    scheduleSuggestions();
+                }
+            });
+            bar.addView(b, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f));
+        }
     }
 
     private void scheduleSuggestions() {
