@@ -8,8 +8,10 @@ set -e
 P=projet
 J=$P/app/src/main/java/com/mahmoh/clavier
 R=$P/app/src/main/res
-mkdir -p "$J" "$R/xml" "$R/drawable"
+A=$P/app/src/main/assets
+mkdir -p "$J" "$R/xml" "$R/drawable" "$A"
 cp ClavierService.java MainActivity.java "$J/"
+cp fr_words.txt ar_words.txt "$A/"
 cp AndroidManifest.xml "$P/app/src/main/"
 cp method.xml "$R/xml/"
 cp ic_*.xml "$R/drawable/"

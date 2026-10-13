@@ -2,6 +2,7 @@ package com.mahmoh.clavier;
 
 import android.content.res.ColorStateList;
 import android.graphics.Color;
+import android.graphics.Typeface;
 import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.StateListDrawable;
@@ -9,6 +10,8 @@ import android.inputmethodservice.InputMethodService;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
+import android.text.InputType;
+import android.text.TextUtils;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.HapticFeedbackConstants;
@@ -24,15 +27,28 @@ import android.widget.LinearLayout;
 import android.widget.PopupWindow;
 import android.widget.TextView;
 
+import java.io.BufferedReader;
+import java.io.BufferedWriter;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.OutputStreamWriter;
+import java.text.Normalizer;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
 /**
- * Clavier système FR (AZERTY) / AR avec rangée de navigation :
+ * Clavier système FR (AZERTY) / AR avec barre de suggestions de mots et rangée de navigation :
  * effacer en arrière / en avant, curseur gauche / droite, haut / bas, début / fin de ligne.
+ * Dictionnaires intégrés (hors connexion) + apprentissage local des mots tapés.
  */
 public class ClavierService extends InputMethodService {
 
@@ -140,6 +156,39 @@ public class ClavierService extends InputMethodService {
     private PopupWindow popup;
     private float density = 1f;
 
+    // ---------- Suggestions de mots ----------
+    /** Mis à true par l'écran d'accueil pour effacer les mots appris. */
+    public static volatile boolean clearLearnedRequested = false;
+
+    private static final int SUG_DELAY_MS = 40;
+    private final TextView[] sugViews = new TextView[3];
+    private final String[] sugs = new String[3];
+    private boolean suggestOn = true;
+    private volatile Dict dictFr, dictAr;
+    private final Map<String, Integer> learnedFr = new HashMap<>();
+    private final Map<String, Integer> learnedAr = new HashMap<>();
+    private final Map<String, String> foldCache = new HashMap<>();
+    private int learnedChanges = 0;
+
+    private final Runnable updateSugRunnable = new Runnable() {
+        @Override
+        public void run() {
+            updateSuggestions();
+        }
+    };
+
+    /** Dictionnaire classé par fréquence décroissante ; « folded » = sans accents ni voyelles brèves. */
+    private static final class Dict {
+        final String[] words;
+        final String[] folded;
+
+        Dict(List<String> list) {
+            words = list.toArray(new String[0]);
+            folded = new String[words.length];
+            for (int i = 0; i < words.length; i++) folded[i] = fold(words[i]);
+        }
+    }
+
     // ---------- Une touche ----------
     private final class Key {
         final int type;
@@ -178,6 +227,28 @@ public class ClavierService extends InputMethodService {
         super.onCreate();
         density = getResources().getDisplayMetrics().density;
         lang = getSharedPreferences("clavier", MODE_PRIVATE).getInt("lang", LANG_FR);
+        loadLearned();
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                dictFr = loadDict("fr_words.txt");
+                dictAr = loadDict("ar_words.txt");
+                handler.post(new Runnable() {
+                    @Override
+                    public void run() {
+                        updateSuggestions();
+                    }
+                });
+            }
+        }).start();
+    }
+
+    @Override
+    public void onUpdateSelection(int oldSelStart, int oldSelEnd, int newSelStart, int newSelEnd,
+                                  int candidatesStart, int candidatesEnd) {
+        super.onUpdateSelection(oldSelStart, oldSelEnd, newSelStart, newSelEnd,
+                candidatesStart, candidatesEnd);
+        scheduleSuggestions();
     }
 
     @Override
@@ -199,18 +270,25 @@ public class ClavierService extends InputMethodService {
     @Override
     public void onStartInputView(EditorInfo info, boolean restarting) {
         super.onStartInputView(info, restarting);
+        if (clearLearnedRequested) {
+            clearLearned();
+            clearLearnedRequested = false;
+        }
+        suggestOn = !isSensitive(info);
         if (!restarting) {
             symbols = false;
             shift = 0;
         }
         build();
         autoShift();
+        scheduleSuggestions();
     }
 
     @Override
     public void onFinishInputView(boolean finishingInput) {
         dismissPopup();
         handler.removeCallbacksAndMessages(null);
+        saveLearned();
         super.onFinishInputView(finishingInput);
     }
 
@@ -225,6 +303,7 @@ public class ClavierService extends InputMethodService {
     public void onDestroy() {
         dismissPopup();
         handler.removeCallbacksAndMessages(null);
+        saveLearned();
         super.onDestroy();
     }
 
@@ -240,6 +319,9 @@ public class ClavierService extends InputMethodService {
         keys.clear();
         shiftKey = null;
 
+        // 0) Barre de suggestions de mots
+        addSuggestionBar();
+
         // 1) Rangée de navigation
         List<Key> nav = new ArrayList<>();
         nav.add(icon(T_BKSP, R.drawable.ic_backspace, 1f, S_NAV));
@@ -252,12 +334,12 @@ public class ClavierService extends InputMethodService {
         nav.add(fn(T_DOWN, "↓", 1f, S_NAV, 20));
         nav.add(fn(T_HOME, "|←", 1f, S_NAV, 16));
         nav.add(fn(T_END, "→|", 1f, S_NAV, 16));
-        addRow(nav, 36);
+        addRow(nav, 34);
 
         // 2) Rangée des chiffres
         List<Key> nums = new ArrayList<>();
         for (String d : NUMS) nums.add(ch(d, null, false, 18));
-        addRow(nums, 42);
+        addRow(nums, 40);
 
         // 3) Lettres ou symboles
         if (symbols) {
@@ -265,7 +347,7 @@ public class ClavierService extends InputMethodService {
                 List<Key> row = new ArrayList<>();
                 for (String s : SYM_ROWS[r]) row.add(ch(s, null, false, 20));
                 if (r == 2) row.add(icon(T_BKSP, R.drawable.ic_backspace, 1.5f, S_FN));
-                addRow(row, 42);
+                addRow(row, 40);
             }
         } else {
             String[][] rows = (lang == LANG_FR) ? FR_ROWS : AR_ROWS;
@@ -280,7 +362,7 @@ public class ClavierService extends InputMethodService {
                     row.add(ch(rows[r][i], sh, true, 20));
                 }
                 if (r == 2) row.add(icon(T_BKSP, R.drawable.ic_backspace, 1.4f, S_FN));
-                addRow(row, 42);
+                addRow(row, 40);
             }
         }
 
@@ -301,7 +383,7 @@ public class ClavierService extends InputMethodService {
         bottom.add(el == null
                 ? icon(T_ENTER, R.drawable.ic_enter, 1.5f, S_ACCENT)
                 : fn(T_ENTER, el, 1.5f, S_ACCENT, 18));
-        addRow(bottom, 42);
+        addRow(bottom, 40);
 
         refreshLabels();
     }
@@ -580,11 +662,16 @@ public class ClavierService extends InputMethodService {
             default:
                 break;
         }
+        scheduleSuggestions();
     }
 
     private void commit(String s) {
         InputConnection ic = getCurrentInputConnection();
         if (ic == null || s == null || s.isEmpty()) return;
+        // Apprentissage : un mot est terminé quand on tape un espace ou une ponctuation
+        if (suggestOn && s.length() == 1 && !Character.isLetter(s.charAt(0))) {
+            learnWord(wordBeforeCursor());
+        }
         ic.commitText(s, 1);
         if (shift == 1) setShift(0);
         autoShift();
@@ -662,6 +749,7 @@ public class ClavierService extends InputMethodService {
             public void run() {
                 build();
                 autoShift();
+                scheduleSuggestions();
             }
         });
     }
@@ -739,5 +827,271 @@ public class ClavierService extends InputMethodService {
             }
             popup = null;
         }
+    }
+
+    // =====================================================================
+    //  Barre de suggestions de mots
+    // =====================================================================
+
+    private void addSuggestionBar() {
+        LinearLayout bar = new LinearLayout(this);
+        bar.setOrientation(LinearLayout.HORIZONTAL);
+        bar.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
+        for (int i = 0; i < 3; i++) {
+            if (i > 0) {
+                View div = new View(this);
+                div.setBackgroundColor(C_KEY);
+                LinearLayout.LayoutParams dl = new LinearLayout.LayoutParams(dp(1), dp(20));
+                dl.gravity = Gravity.CENTER_VERTICAL;
+                bar.addView(div, dl);
+            }
+            final int idx = i;
+            TextView tv = new TextView(this);
+            tv.setGravity(Gravity.CENTER);
+            tv.setTextColor(C_TEXT);
+            tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 17);
+            tv.setSingleLine(true);
+            tv.setEllipsize(TextUtils.TruncateAt.END);
+            tv.setPadding(dp(6), 0, dp(6), 0);
+            if (i == 1) tv.setTypeface(Typeface.DEFAULT_BOLD);
+            tv.setBackground(keyBackground(C_BG));
+            tv.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    applySuggestion(idx);
+                }
+            });
+            bar.addView(tv, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f));
+            sugViews[i] = tv;
+            sugs[i] = null;
+        }
+        root.addView(bar, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(36)));
+    }
+
+    private void scheduleSuggestions() {
+        handler.removeCallbacks(updateSugRunnable);
+        handler.postDelayed(updateSugRunnable, SUG_DELAY_MS);
+    }
+
+    private void updateSuggestions() {
+        if (sugViews[0] == null) return;
+        String[] res = new String[3];
+        if (suggestOn) computeSuggestions(wordBeforeCursor(), res);
+        // Disposition façon Gboard : meilleure suggestion au centre
+        sugs[1] = res[0];
+        sugs[0] = res[1];
+        sugs[2] = res[2];
+        for (int i = 0; i < 3; i++) {
+            if (sugViews[i] != null) sugViews[i].setText(sugs[i] == null ? "" : sugs[i]);
+        }
+    }
+
+    /** Mot en cours de saisie (lettres juste avant le curseur). */
+    private String wordBeforeCursor() {
+        InputConnection ic = getCurrentInputConnection();
+        if (ic == null) return "";
+        CharSequence t = ic.getTextBeforeCursor(32, 0);
+        if (t == null) return "";
+        int end = t.length();
+        int i = end;
+        while (i > 0) {
+            char c = t.charAt(i - 1);
+            if (Character.isLetter(c) || Character.getType(c) == Character.NON_SPACING_MARK) i--;
+            else break;
+        }
+        return t.subSequence(i, end).toString();
+    }
+
+    private void computeSuggestions(String prefix, String[] out) {
+        Dict d = (lang == LANG_FR) ? dictFr : dictAr;
+        Map<String, Integer> learned = (lang == LANG_FR) ? learnedFr : learnedAr;
+        String fp = fold(prefix);
+        boolean cap = !prefix.isEmpty() && Character.isUpperCase(prefix.charAt(0));
+        List<String> res = new ArrayList<>();
+
+        // 1) Mots appris (au moins 2 fois), les plus utilisés d'abord (2 places maximum)
+        final Map<String, Integer> counts = learned;
+        List<String> mine = new ArrayList<>();
+        for (Map.Entry<String, Integer> e : learned.entrySet()) {
+            if (e.getValue() >= 2 && (fp.isEmpty() || foldCached(e.getKey()).startsWith(fp))) {
+                mine.add(e.getKey());
+            }
+        }
+        Collections.sort(mine, new Comparator<String>() {
+            @Override
+            public int compare(String a, String b) {
+                return counts.get(b) - counts.get(a);
+            }
+        });
+        for (String w : mine) {
+            if (res.size() >= 2) break;
+            res.add(w);
+        }
+
+        // 2) Dictionnaire intégré, par fréquence
+        if (d != null) {
+            for (int i = 0; i < d.words.length && res.size() < 3; i++) {
+                if (fp.isEmpty() || d.folded[i].startsWith(fp)) {
+                    String w = d.words[i];
+                    if (!containsIgnoreCase(res, w)) res.add(w);
+                }
+            }
+        }
+
+        for (int i = 0; i < 3 && i < res.size(); i++) {
+            String w = res.get(i);
+            if (cap && !w.isEmpty()) w = w.substring(0, 1).toUpperCase(Locale.FRENCH) + w.substring(1);
+            out[i] = w;
+        }
+    }
+
+    private static boolean containsIgnoreCase(List<String> list, String w) {
+        for (String s : list) if (s.equalsIgnoreCase(w)) return true;
+        return false;
+    }
+
+    private void applySuggestion(int idx) {
+        String w = sugs[idx];
+        if (w == null || w.isEmpty()) return;
+        InputConnection ic = getCurrentInputConnection();
+        if (ic == null) return;
+        String prefix = wordBeforeCursor();
+        ic.beginBatchEdit();
+        if (!prefix.isEmpty()) ic.deleteSurroundingText(prefix.length(), 0);
+        ic.commitText(w + " ", 1);
+        ic.endBatchEdit();
+        learnWord(w);
+        if (shift == 1) setShift(0);
+        autoShift();
+        scheduleSuggestions();
+    }
+
+    /** Pas de suggestions ni d'apprentissage dans les mots de passe, e-mails, adresses web, nombres. */
+    private static boolean isSensitive(EditorInfo ei) {
+        if (ei == null) return true;
+        int cls = ei.inputType & InputType.TYPE_MASK_CLASS;
+        int var = ei.inputType & InputType.TYPE_MASK_VARIATION;
+        if (cls == InputType.TYPE_CLASS_TEXT) {
+            return var == InputType.TYPE_TEXT_VARIATION_PASSWORD
+                    || var == InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
+                    || var == InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD
+                    || var == InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS
+                    || var == InputType.TYPE_TEXT_VARIATION_WEB_EMAIL_ADDRESS
+                    || var == InputType.TYPE_TEXT_VARIATION_URI
+                    || (ei.inputType & InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS) != 0;
+        }
+        return true; // nombre, téléphone, date/heure, autre
+    }
+
+    // ---------- Normalisation (sans accents, voyelles brèves arabes, variantes de lettres) ----------
+
+    private static String fold(String s) {
+        String n = Normalizer.normalize(s.toLowerCase(Locale.ROOT), Normalizer.Form.NFD);
+        StringBuilder b = new StringBuilder(n.length());
+        for (int i = 0; i < n.length(); i++) {
+            char c = n.charAt(i);
+            if (Character.getType(c) == Character.NON_SPACING_MARK || c == 'ـ') continue;
+            if (c == 'ٱ') c = 'ا';       // ٱ -> ا
+            else if (c == 'ى') c = 'ي';  // ى -> ي
+            else if (c == 'ة') c = 'ه';  // ة -> ه
+            b.append(c);
+        }
+        return b.toString();
+    }
+
+    private String foldCached(String w) {
+        String f = foldCache.get(w);
+        if (f == null) {
+            f = fold(w);
+            if (foldCache.size() > 6000) foldCache.clear();
+            foldCache.put(w, f);
+        }
+        return f;
+    }
+
+    // ---------- Dictionnaires intégrés ----------
+
+    private Dict loadDict(String assetName) {
+        List<String> list = new ArrayList<>(40000);
+        try {
+            InputStream in = getAssets().open(assetName);
+            BufferedReader br = new BufferedReader(new InputStreamReader(in, "UTF-8"));
+            String line;
+            while ((line = br.readLine()) != null) {
+                line = line.trim();
+                if (!line.isEmpty()) list.add(line);
+            }
+            br.close();
+        } catch (Exception ignored) {
+        }
+        return new Dict(list);
+    }
+
+    // ---------- Mots appris (stockés uniquement sur le téléphone) ----------
+
+    private void learnWord(String w) {
+        if (!suggestOn || w == null) return;
+        String k = w.toLowerCase(Locale.ROOT);
+        if (k.length() < 3 || k.length() > 30) return;
+        Map<String, Integer> m = (lang == LANG_FR) ? learnedFr : learnedAr;
+        Integer c = m.get(k);
+        m.put(k, c == null ? 1 : Math.min(c + 1, 1000));
+        if (m.size() > 4000) {
+            Iterator<Map.Entry<String, Integer>> it = m.entrySet().iterator();
+            while (it.hasNext()) {
+                if (it.next().getValue() <= 1) it.remove();
+            }
+        }
+        if (++learnedChanges >= 20) saveLearned();
+    }
+
+    private void loadLearned() {
+        readLearned(new File(getFilesDir(), "appris_fr.txt"), learnedFr);
+        readLearned(new File(getFilesDir(), "appris_ar.txt"), learnedAr);
+    }
+
+    private void readLearned(File f, Map<String, Integer> m) {
+        if (!f.exists()) return;
+        try {
+            BufferedReader br = new BufferedReader(new InputStreamReader(new FileInputStream(f), "UTF-8"));
+            String line;
+            while ((line = br.readLine()) != null) {
+                int t = line.lastIndexOf('\t');
+                if (t <= 0) continue;
+                try {
+                    m.put(line.substring(0, t), Integer.parseInt(line.substring(t + 1).trim()));
+                } catch (NumberFormatException ignored) {
+                }
+            }
+            br.close();
+        } catch (Exception ignored) {
+        }
+    }
+
+    private void saveLearned() {
+        if (learnedChanges == 0) return;
+        writeLearned(new File(getFilesDir(), "appris_fr.txt"), learnedFr);
+        writeLearned(new File(getFilesDir(), "appris_ar.txt"), learnedAr);
+        learnedChanges = 0;
+    }
+
+    private void writeLearned(File f, Map<String, Integer> m) {
+        try {
+            BufferedWriter bw = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(f), "UTF-8"));
+            for (Map.Entry<String, Integer> e : m.entrySet()) {
+                bw.write(e.getKey() + "\t" + e.getValue() + "\n");
+            }
+            bw.close();
+        } catch (Exception ignored) {
+        }
+    }
+
+    private void clearLearned() {
+        learnedFr.clear();
+        learnedAr.clear();
+        foldCache.clear();
+        learnedChanges = 0;
+        new File(getFilesDir(), "appris_fr.txt").delete();
+        new File(getFilesDir(), "appris_ar.txt").delete();
     }
 }

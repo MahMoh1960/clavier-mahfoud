@@ -1,0 +1,3 @@
+Listes de mots fr_words.txt et ar_words.txt : extraites du projet open source « wordfreq »
+(Robyn Speer et contributeurs), données sous licence CC BY-SA 4.0.
+https://github.com/rspeer/wordfreq

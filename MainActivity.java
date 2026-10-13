@@ -14,6 +14,7 @@ import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
+import android.widget.Toast;
 
 /** Petit écran d'accueil : activation du clavier et zone de test. */
 public class MainActivity extends Activity {
@@ -65,6 +66,19 @@ public class MainActivity extends Activity {
         });
         col.addView(b2);
 
+        Button b3 = new Button(this);
+        b3.setText("Effacer les mots appris");
+        b3.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                ClavierService.clearLearnedRequested = true;
+                new java.io.File(getFilesDir(), "appris_fr.txt").delete();
+                new java.io.File(getFilesDir(), "appris_ar.txt").delete();
+                Toast.makeText(MainActivity.this, "Mots appris effacés", Toast.LENGTH_SHORT).show();
+            }
+        });
+        col.addView(b3);
+
         EditText test = new EditText(this);
         test.setHint("Zone de test…");
         test.setMinLines(6);
@@ -78,7 +92,10 @@ public class MainActivity extends Activity {
         col.addView(test, tlp);
 
         TextView help = new TextView(this);
-        help.setText("Rangée du haut :\n"
+        help.setText("Barre de suggestions : touchez un mot pour remplacer celui en cours "
+                + "(le meilleur est au centre). Le clavier apprend vos mots, uniquement sur ce téléphone ; "
+                + "rien n'est envoyé et rien n'est appris dans les mots de passe, e-mails et adresses web.\n\n"
+                + "Rangée du haut :\n"
                 + "• Effacer en arrière / en avant\n"
                 + "• ← → : déplacer le curseur\n"
                 + "• ↑ ↓ : monter / descendre d'une ligne\n"
