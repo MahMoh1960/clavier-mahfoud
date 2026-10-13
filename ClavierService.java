@@ -232,6 +232,7 @@ public class ClavierService extends InputMethodService {
         super.onCreate();
         density = getResources().getDisplayMetrics().density;
         lang = getSharedPreferences("clavier", MODE_PRIVATE).getInt("lang", LANG_FR);
+        toolsOpen = getSharedPreferences("clavier", MODE_PRIVATE).getBoolean("tools_open", false);
         loadLearned();
         new Thread(new Runnable() {
             @Override
@@ -283,7 +284,6 @@ public class ClavierService extends InputMethodService {
         if (!restarting) {
             symbols = false;
             shift = 0;
-            toolsOpen = false;
         }
         build();
         autoShift();
@@ -863,6 +863,7 @@ public class ClavierService extends InputMethodService {
             public void onClick(View v) {
                 v.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
                 toolsOpen = !toolsOpen;
+                getSharedPreferences("clavier", MODE_PRIVATE).edit().putBoolean("tools_open", toolsOpen).apply();
                 rebuildLater();
             }
         });
