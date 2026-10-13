@@ -64,14 +64,14 @@ public class ClavierService extends InputMethodService {
     private static final int S_NORMAL = 0, S_FN = 1, S_NAV = 2, S_ACCENT = 3;
 
     // ---------- Couleurs (thème sombre proche de Gboard) ----------
-    private static final int C_BG = 0xFF202124;
-    private static final int C_KEY = 0xFF3C4043;
-    private static final int C_FN = 0xFF2D2F31;
-    private static final int C_NAV = 0xFF303134;
+    private static final int C_BG = 0xFF000000;     // noir pur
+    private static final int C_KEY = 0xFF141414;    // touches : presque noir
+    private static final int C_FN = 0xFF0A0A0A;     // touches de fonction : noir très sombre
+    private static final int C_NAV = 0xFF0E0E0E;    // rangée de navigation
     private static final int C_ACCENT = 0xFF8AB4F8;
     private static final int C_TEXT = 0xFFD4A017;   // jaune foncé (lettres, chiffres, icônes)
     private static final int C_DIM = 0xFFB8901A;    // jaune foncé atténué (nom de la langue)
-    private static final int C_ON_ACCENT = 0xFF202124;
+    private static final int C_ON_ACCENT = 0xFF000000;
 
     // ---------- Dispositions ----------
     private static final String[] NUMS = {"1", "2", "3", "4", "5", "6", "7", "8", "9", "0"};
@@ -794,7 +794,7 @@ public class ClavierService extends InputMethodService {
         box.setOrientation(LinearLayout.HORIZONTAL);
         box.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
         box.setPadding(dp(4), dp(4), dp(4), dp(4));
-        box.setBackground(rounded(0xFF2A2B2E));
+        box.setBackground(rounded(0xFF000000));
 
         for (final String a : alts) {
             TextView t = new TextView(this);
@@ -880,7 +880,7 @@ public class ClavierService extends InputMethodService {
         for (int i = 0; i < 3; i++) {
             if (i > 0) {
                 View div = new View(this);
-                div.setBackgroundColor(C_KEY);
+                div.setBackgroundColor(0xFF2E2E2E);
                 LinearLayout.LayoutParams dl = new LinearLayout.LayoutParams(dp(1), dp(20));
                 dl.gravity = Gravity.CENTER_VERTICAL;
                 bar.addView(div, dl);
