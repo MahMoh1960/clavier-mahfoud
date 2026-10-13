@@ -6,6 +6,7 @@ import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.InsetDrawable;
 import android.graphics.drawable.StateListDrawable;
 import android.inputmethodservice.InputMethodService;
 import android.os.Handler;
@@ -68,8 +69,8 @@ public class ClavierService extends InputMethodService {
     private static final int C_FN = 0xFF2D2F31;
     private static final int C_NAV = 0xFF303134;
     private static final int C_ACCENT = 0xFF8AB4F8;
-    private static final int C_TEXT = 0xFFE8EAED;
-    private static final int C_DIM = 0xFF9AA0A6;
+    private static final int C_TEXT = 0xFFD4A017;   // jaune foncé (lettres, chiffres, icônes)
+    private static final int C_DIM = 0xFFB8901A;    // jaune foncé atténué (nom de la langue)
     private static final int C_ON_ACCENT = 0xFF202124;
 
     // ---------- Dispositions ----------
@@ -266,7 +267,7 @@ public class ClavierService extends InputMethodService {
         root.setOrientation(LinearLayout.VERTICAL);
         root.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
         root.setBackgroundColor(C_BG);
-        root.setPadding(dp(3), dp(4), dp(3), dp(6));
+        root.setPadding(dp(2), dp(2), dp(2), dp(6));
         build();
         return root;
     }
@@ -439,7 +440,7 @@ public class ClavierService extends InputMethodService {
             View v = makeView(k);
             LinearLayout.LayoutParams lp =
                     new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, k.weight);
-            lp.setMargins(dp(2), dp(2), dp(2), dp(2));
+            lp.setMargins(0, 0, 0, 0);
             r.addView(v, lp);
             keys.add(k);
         }
@@ -470,7 +471,7 @@ public class ClavierService extends InputMethodService {
             k.tv = tv;
             v = tv;
         }
-        v.setBackground(keyBackground(bg));
+        v.setBackground(new InsetDrawable(keyBackground(bg), dp(2)));
         v.setOnTouchListener(new KeyTouch(k));
         k.view = v;
         return v;
@@ -588,8 +589,9 @@ public class ClavierService extends InputMethodService {
 
         @Override
         public boolean onTouch(View v, MotionEvent e) {
-            boolean inside = e.getX() >= 0 && e.getX() <= v.getWidth()
-                    && e.getY() >= 0 && e.getY() <= v.getHeight();
+            int slop = dp(12);
+            boolean inside = e.getX() >= -slop && e.getX() <= v.getWidth() + slop
+                    && e.getY() >= -slop && e.getY() <= v.getHeight() + slop;
             switch (e.getActionMasked()) {
                 case MotionEvent.ACTION_DOWN:
                     v.setPressed(true);
