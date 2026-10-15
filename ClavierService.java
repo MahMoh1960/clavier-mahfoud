@@ -164,30 +164,147 @@ public class ClavierService extends InputMethodService {
     /** Mis à true par l'écran d'accueil pour effacer les mots appris. */
     public static volatile boolean clearLearnedRequested = false;
 
-    // ---------- Dictée vocale ----------
-    private static volatile String pendingVoice = null;
+    // ---------- Dictée vocale continue ----------
     private static volatile ClavierService instance = null;
+    private android.speech.SpeechRecognizer recognizer;
+    private boolean listening = false;
+    private ImageView micView;
 
-    /** Appelé par VoiceActivity avec le texte dicté. */
-    public static void deliverVoice(String text) {
-        pendingVoice = text;
+    /** Appelé par VoiceActivity quand l'autorisation du micro vient d'être accordée. */
+    public static void micPermissionGranted() {
         final ClavierService s = instance;
         if (s != null) {
             s.handler.postDelayed(new Runnable() {
                 @Override
                 public void run() {
-                    s.flushVoice();
+                    s.beginListening();
                 }
             }, 400);
         }
     }
 
-    private void flushVoice() {
-        String t = pendingVoice;
-        if (t == null) return;
+    private void startVoice() {
+        if (listening) {
+            stopListening();
+            return;
+        }
+        if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO)
+                != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            Intent i = new Intent(this, VoiceActivity.class);
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            try {
+                startActivity(i);
+            } catch (Exception ignored) {
+            }
+            return;
+        }
+        beginListening();
+    }
+
+    private void beginListening() {
+        if (listening) return;
+        if (!android.speech.SpeechRecognizer.isRecognitionAvailable(this)) {
+            android.widget.Toast.makeText(this, "Reconnaissance vocale indisponible sur ce téléphone",
+                    android.widget.Toast.LENGTH_LONG).show();
+            return;
+        }
+        try {
+            recognizer = android.speech.SpeechRecognizer.createSpeechRecognizer(this);
+            recognizer.setRecognitionListener(new android.speech.RecognitionListener() {
+                @Override public void onReadyForSpeech(Bundle params) { }
+                @Override public void onBeginningOfSpeech() { }
+                @Override public void onRmsChanged(float rmsdB) { }
+                @Override public void onBufferReceived(byte[] buffer) { }
+                @Override public void onEndOfSpeech() { }
+                @Override public void onPartialResults(Bundle partialResults) { }
+                @Override public void onEvent(int eventType, Bundle params) { }
+
+                @Override
+                public void onResults(Bundle results) {
+                    java.util.ArrayList<String> r =
+                            results.getStringArrayList(android.speech.SpeechRecognizer.RESULTS_RECOGNITION);
+                    if (r != null && !r.isEmpty() && r.get(0) != null) commitVoice(r.get(0).trim());
+                    relisten(150);
+                }
+
+                @Override
+                public void onError(int error) {
+                    if (error == android.speech.SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS) {
+                        stopListening();
+                        return;
+                    }
+                    if (error == android.speech.SpeechRecognizer.ERROR_RECOGNIZER_BUSY && recognizer != null) {
+                        recognizer.cancel();
+                        relisten(600);
+                        return;
+                    }
+                    relisten(250);
+                }
+            });
+        } catch (Exception e) {
+            recognizer = null;
+            return;
+        }
+        listening = true;
+        updateMicTint();
+        listenOnce();
+    }
+
+    private void relisten(long delayMs) {
+        if (!listening) return;
+        handler.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                listenOnce();
+            }
+        }, delayMs);
+    }
+
+    private void listenOnce() {
+        if (!listening || recognizer == null) return;
+        String tag = (lang == LANG_FR) ? "fr-FR" : "ar";
+        Intent i = new Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+        i.putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+                android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+        i.putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE, tag);
+        i.putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, tag);
+        i.putExtra(android.speech.RecognizerIntent.EXTRA_CALLING_PACKAGE, getPackageName());
+        i.putExtra(android.speech.RecognizerIntent.EXTRA_MAX_RESULTS, 1);
+        i.putExtra(android.speech.RecognizerIntent.EXTRA_PARTIAL_RESULTS, false);
+        i.putExtra("android.speech.extra.SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS", 4000L);
+        i.putExtra("android.speech.extra.SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS", 4000L);
+        i.putExtra("android.speech.extra.SPEECH_INPUT_MINIMUM_LENGTH_MILLIS", 8000L);
+        try {
+            recognizer.startListening(i);
+        } catch (Exception e) {
+            relisten(600);
+        }
+    }
+
+    private void stopListening() {
+        listening = false;
+        handler.removeCallbacksAndMessages(null);
+        if (recognizer != null) {
+            try {
+                recognizer.cancel();
+                recognizer.destroy();
+            } catch (Exception ignored) {
+            }
+            recognizer = null;
+        }
+        updateMicTint();
+    }
+
+    private void updateMicTint() {
+        if (micView != null) {
+            micView.setImageTintList(ColorStateList.valueOf(listening ? 0xFFFF5252 : C_TEXT));
+        }
+    }
+
+    private void commitVoice(String t) {
+        if (t.isEmpty()) return;
         InputConnection ic = getCurrentInputConnection();
         if (ic == null) return;
-        pendingVoice = null;
         CharSequence before = ic.getTextBeforeCursor(1, 0);
         String out = t;
         if (before != null && before.length() == 1 && !Character.isWhitespace(before.charAt(0))) out = " " + t;
@@ -195,20 +312,11 @@ public class ClavierService extends InputMethodService {
         scheduleSuggestions();
     }
 
-    private void startVoice() {
-        Intent i = new Intent(this, VoiceActivity.class);
-        i.putExtra("lang", lang == LANG_FR ? "fr-FR" : "ar");
-        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        try {
-            startActivity(i);
-        } catch (Exception ignored) {
-        }
-    }
-
     private void addMicButton(LinearLayout bar) {
         ImageView mic = new ImageView(this);
+        micView = mic;
         mic.setImageResource(R.drawable.ic_mic);
-        mic.setImageTintList(ColorStateList.valueOf(C_TEXT));
+        mic.setImageTintList(ColorStateList.valueOf(listening ? 0xFFFF5252 : C_TEXT));
         mic.setScaleType(ImageView.ScaleType.FIT_CENTER);
         mic.setPadding(dp(8), dp(4), dp(8), dp(4));
         mic.setBackground(keyBackground(C_BG));
@@ -347,18 +455,11 @@ public class ClavierService extends InputMethodService {
         build();
         autoShift();
         scheduleSuggestions();
-        if (pendingVoice != null) {
-            handler.postDelayed(new Runnable() {
-                @Override
-                public void run() {
-                    flushVoice();
-                }
-            }, 400);
-        }
     }
 
     @Override
     public void onFinishInputView(boolean finishingInput) {
+        if (listening) stopListening();
         dismissPopup();
         handler.removeCallbacksAndMessages(null);
         saveLearned();
