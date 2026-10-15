@@ -164,6 +164,64 @@ public class ClavierService extends InputMethodService {
     /** Mis à true par l'écran d'accueil pour effacer les mots appris. */
     public static volatile boolean clearLearnedRequested = false;
 
+    // ---------- Dictée vocale ----------
+    private static volatile String pendingVoice = null;
+    private static volatile ClavierService instance = null;
+
+    /** Appelé par VoiceActivity avec le texte dicté. */
+    public static void deliverVoice(String text) {
+        pendingVoice = text;
+        final ClavierService s = instance;
+        if (s != null) {
+            s.handler.postDelayed(new Runnable() {
+                @Override
+                public void run() {
+                    s.flushVoice();
+                }
+            }, 400);
+        }
+    }
+
+    private void flushVoice() {
+        String t = pendingVoice;
+        if (t == null) return;
+        InputConnection ic = getCurrentInputConnection();
+        if (ic == null) return;
+        pendingVoice = null;
+        CharSequence before = ic.getTextBeforeCursor(1, 0);
+        String out = t;
+        if (before != null && before.length() == 1 && !Character.isWhitespace(before.charAt(0))) out = " " + t;
+        ic.commitText(out, 1);
+        scheduleSuggestions();
+    }
+
+    private void startVoice() {
+        Intent i = new Intent(this, VoiceActivity.class);
+        i.putExtra("lang", lang == LANG_FR ? "fr-FR" : "ar");
+        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        try {
+            startActivity(i);
+        } catch (Exception ignored) {
+        }
+    }
+
+    private void addMicButton(LinearLayout bar) {
+        ImageView mic = new ImageView(this);
+        mic.setImageResource(R.drawable.ic_mic);
+        mic.setImageTintList(ColorStateList.valueOf(C_TEXT));
+        mic.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        mic.setPadding(dp(8), dp(4), dp(8), dp(4));
+        mic.setBackground(keyBackground(C_BG));
+        mic.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                v.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
+                startVoice();
+            }
+        });
+        bar.addView(mic, new LinearLayout.LayoutParams(dp(44), ViewGroup.LayoutParams.MATCH_PARENT));
+    }
+
     private static final int SUG_DELAY_MS = 40;
     private final TextView[] sugViews = new TextView[3];
     private final String[] sugs = new String[3];
@@ -276,6 +334,7 @@ public class ClavierService extends InputMethodService {
     @Override
     public void onStartInputView(EditorInfo info, boolean restarting) {
         super.onStartInputView(info, restarting);
+        instance = this;
         if (clearLearnedRequested) {
             clearLearned();
             clearLearnedRequested = false;
@@ -288,6 +347,14 @@ public class ClavierService extends InputMethodService {
         build();
         autoShift();
         scheduleSuggestions();
+        if (pendingVoice != null) {
+            handler.postDelayed(new Runnable() {
+                @Override
+                public void run() {
+                    flushVoice();
+                }
+            }, 400);
+        }
     }
 
     @Override
@@ -871,6 +938,7 @@ public class ClavierService extends InputMethodService {
 
         if (toolsOpen) {
             addToolButtons(bar);
+            addMicButton(bar);
             root.addView(bar, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(36)));
             sugViews[0] = null;
             sugViews[1] = null;
@@ -906,6 +974,7 @@ public class ClavierService extends InputMethodService {
             sugViews[i] = tv;
             sugs[i] = null;
         }
+        addMicButton(bar);
         root.addView(bar, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(36)));
     }
 
